@@ -44,7 +44,7 @@ export default function Incidents() {
   async function postmortem(id: string) {
     setAnalyzing(id);
     try {
-      const res = await api.postmortem(id);
+      await api.postmortem(id);
       alert('Postmortem generated. View in incident details.');
       loadIncidents();
     } catch (e: any) {

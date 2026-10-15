@@ -92,6 +92,7 @@ class AlertEngine:
                 triggered.append({
                     "rule_id": rule.rule_id,
                     "name": rule.name,
+                    "metric": rule.metric,
                     "severity": rule.severity,
                     "value": value,
                     "threshold": rule.threshold,
@@ -119,11 +120,17 @@ class AlertEngine:
 
 
 from pathlib import Path
+from app.core.config import settings
+
 
 _engine: Optional[AlertEngine] = None
+
 
 def get_alert_engine() -> AlertEngine:
     global _engine
     if _engine is None:
         _engine = AlertEngine()
+        # Auto-seed for tests
+        if not _engine._rules:
+            _engine._seed()
     return _engine

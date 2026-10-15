@@ -241,7 +241,7 @@ Be thorough, blameless, and actionable."""
 
 
 from pathlib import Path
-from config import settings
+from app.core.config import settings
 
 _engine: Optional[IncidentEngine] = None
 

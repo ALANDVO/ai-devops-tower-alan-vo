@@ -139,7 +139,7 @@ Requirements:
             return {"notes": f"Generation unavailable: {str(e)}", "error": True}
 
 
-from config import settings
+from app.core.config import settings
 
 _engine: Optional[ReleaseEngine] = None
 

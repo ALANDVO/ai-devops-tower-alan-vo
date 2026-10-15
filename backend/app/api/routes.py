@@ -3,21 +3,20 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 
-from api.auth import get_current_user
-from api.schemas import (
+from app.api.auth import get_current_user, require_permission
+from app.api.schemas import (
     PipelineTriggerRequest, DeployRequest, IncidentCreate,
     AlertRuleCreate, ReleasePromoteRequest,
 )
-from services.pipelines import get_pipeline_engine
-from services.builds import get_build_engine
-from services.analysis import get_analysis_engine
-from services.artifacts import get_artifact_store
-from services.deploy import get_deploy_engine
-from services.slo import get_slo_engine
-from services.incidents import get_incident_engine
-from services.releases import get_release_engine
-from services.alerts import get_alert_engine
-
+from app.services.pipelines import get_pipeline_engine
+from app.services.builds import get_build_engine
+from app.services.analysis import get_analysis_engine
+from app.services.artifacts import get_artifact_store
+from app.services.deploy import get_deploy_engine
+from app.services.slo import get_slo_engine
+from app.services.incidents import get_incident_engine
+from app.services.releases import get_release_engine
+from app.services.alerts import get_alert_engine
 
 router = APIRouter()
 
@@ -48,7 +47,7 @@ async def get_pipeline(pipeline_id: str):
 
 
 @router.post("/pipelines/{pipeline_id}/trigger", status_code=202)
-async def trigger_pipeline(pipeline_id: str, req: PipelineTriggerRequest, user=Depends(get_current_user)):
+async def trigger_pipeline(pipeline_id: str, req: PipelineTriggerRequest, user=Depends(require_permission("pipelines:write"))):
     engine = get_pipeline_engine()
     result = engine.trigger(pipeline_id, req.branch or "main", req.commit_sha or "latest", user["email"], req.parameters or {})
     return {"build_id": result["build_id"], "status": "queued"}
@@ -109,7 +108,7 @@ async def list_artifacts(service: Optional[str] = None, limit: int = Query(50, l
 # ─── Deployment ───
 
 @router.post("/deploy", status_code=202)
-async def start_deployment(req: DeployRequest, user=Depends(get_current_user)):
+async def start_deployment(req: DeployRequest, user=Depends(require_permission("deploy:write"))):
     engine = get_deploy_engine()
     result = engine.start(req, user["email"])
     return {"deployment_id": result["deployment_id"], "status": "started", "strategy": req.strategy}
@@ -128,7 +127,7 @@ async def deployment_status(deployment_id: str):
 async def rollback_deployment(deployment_id: str, user=Depends(get_current_user)):
     engine = get_deploy_engine()
     result = engine.rollback(deployment_id, user["email"])
-    return {"deployment_id": deployment_id, "status": result["status"]}
+    return {"deployment_id": deployment_id, "status": result["status"], "reason": result.get("reason", "")}
 
 
 # ─── SLO ───
@@ -168,7 +167,7 @@ async def list_incidents(severity: Optional[str] = None, status: Optional[str] =
 
 
 @router.post("/incidents", status_code=201)
-async def create_incident(req: IncidentCreate, user=Depends(get_current_user)):
+async def create_incident(req: IncidentCreate, user=Depends(require_permission("incidents:write"))):
     engine = get_incident_engine()
     incident = engine.create(req, user["email"])
     return incident
@@ -248,7 +247,7 @@ async def list_alerts(service: Optional[str] = None):
 
 
 @router.post("/alerts", status_code=201)
-async def create_alert(req: AlertRuleCreate, user=Depends(get_current_user)):
+async def create_alert(req: AlertRuleCreate, user=Depends(require_permission("alerts:write"))):
     engine = get_alert_engine()
     alert = engine.create_alert(req, user["email"])
     return alert

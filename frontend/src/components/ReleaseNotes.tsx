@@ -2,7 +2,6 @@ export default function ReleaseNotes({ notes }: { notes: string }) {
   // Simple markdown-like rendering for release notes
   const lines = notes.split('\n');
   const elements: JSX.Element[] = [];
-  let inList = false;
   let listItems: string[] = [];
   let inCode = false;
   let codeLines: string[] = [];
@@ -17,7 +16,6 @@ export default function ReleaseNotes({ notes }: { notes: string }) {
         </ul>
       );
       listItems = [];
-      inList = false;
     }
   }
 
@@ -54,7 +52,6 @@ export default function ReleaseNotes({ notes }: { notes: string }) {
       flushCode();
       elements.push(<h5 key={`h5-${elements.length}`}>{line.slice(4)}</h5>);
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
-      inList = true;
       listItems.push(line.slice(2));
     } else if (line.startsWith('```')) {
       if (inCode) {

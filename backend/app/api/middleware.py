@@ -3,7 +3,7 @@
 import time
 import uuid
 from fastapi import FastAPI, Request
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 from typing import Dict
 
