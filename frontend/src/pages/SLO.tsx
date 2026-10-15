@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, SLO, SLOBudget } from '../api/client';
+import { api, type SLO, type SLOBudget } from '../api/client';
 import SLOChart from '../components/SLOChart';
 
 export default function SLO() {

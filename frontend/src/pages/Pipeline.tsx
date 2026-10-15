@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Pipeline } from '../api/client';
+import { api, type Pipeline } from '../api/client';
 
 export default function Pipeline() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);

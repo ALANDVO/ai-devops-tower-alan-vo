@@ -1,5 +1,8 @@
 # AI DevOps Control Tower
 
+> Work in progress. This checkpoint may be incomplete or fail tests. See PLAN.md and STATUS.md before use.
+
+
 Enterprise AI-powered DevOps platform with deployment pipeline management, SLO monitoring with error budget tracking, incident response automation, LLM-powered build failure analysis, and release notes auto-generation.
 
 ## Architecture

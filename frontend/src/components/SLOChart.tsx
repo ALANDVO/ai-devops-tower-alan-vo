@@ -45,7 +45,7 @@ export default function SLOChart({ sloId }: { sloId: string }) {
   if (error) return <div className="chart-error">{error}</div>;
 
   return (
-    <div className="slo-chart">
+    <div className="slo-chart" data-testid="chart-container">
       <h4>Reliability Over Time</h4>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>

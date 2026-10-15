@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import BaseModel
 
-from config import settings
+from app.core.config import settings
 
 
 auth_router = APIRouter()
@@ -16,10 +16,35 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # RBAC roles
 ROLES = {"admin", "devops", "developer", "viewer"}
 ROLE_PERMISSIONS = {
-    "admin": {"read", "write", "deploy", "rollback", "manage"},
-    "devops": {"read", "write", "deploy", "rollback"},
-    "developer": {"read", "write"},
-    "viewer": {"read"},
+    "admin": {"read", "write", "deploy", "rollback", "manage",
+              "pipelines:read", "pipelines:write",
+              "builds:read", "builds:write",
+              "deploy:read", "deploy:write",
+              "incidents:read", "incidents:write",
+              "alerts:read", "alerts:write",
+              "releases:read", "releases:write",
+              "slo:read", "slo:write",
+              "artifacts:read", "artifacts:write"},
+    "devops": {"read", "write", "deploy", "rollback",
+               "pipelines:read", "pipelines:write",
+               "builds:read", "builds:write",
+               "deploy:read", "deploy:write",
+               "incidents:read", "incidents:write",
+               "alerts:read", "alerts:write",
+               "releases:read", "releases:write",
+               "slo:read", "slo:write",
+               "artifacts:read", "artifacts:write"},
+    "developer": {"read", "write",
+                  "pipelines:read", "pipelines:write",
+                  "builds:read", "builds:write",
+                  "incidents:read", "incidents:write",
+                  "releases:read", "releases:write",
+                  "artifacts:read"},
+    "viewer": {"read",
+               "pipelines:read", "builds:read",
+               "deploy:read", "incidents:read",
+               "alerts:read", "releases:read",
+               "slo:read", "artifacts:read"},
 }
 
 
@@ -85,9 +110,8 @@ async def get_me(user=Depends(get_current_user)):
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest):
     """Email-based login (dev mode). In production, use SAML/OAuth2."""
-    if req.role not in ROLES:
-        raise HTTPException(400, f"Role must be one of: {', '.join(sorted(ROLES))}")
-    return create_token(req.email, req.role)
+    role = req.role if req.role in ROLES else "developer"
+    return create_token(req.email, role)
 
 
 @auth_router.get("/oauth/callback")

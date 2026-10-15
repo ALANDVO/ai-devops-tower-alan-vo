@@ -54,20 +54,19 @@ class SloEngine:
     def _generate_sample_metrics(self, slo: SLODefinition) -> List[dict]:
         """Generate realistic sample metrics for the SLO window."""
         import random
-        random.seed(hash(slo.slo_id) % 10000)
+        # Deterministic seed based on slo_id string
+        seed = sum(ord(c) for c in slo.slo_id) % 10000
+        random.seed(seed)
         now = time.time()
         points = []
         # 30 days of hourly data points (simplified to 720 points)
+        # For a 99.9% SLO, ~99.9% of points should be successful
         for i in range(720):
             ts = now - (720 - i) * 3600
-            # Base success rate near objective with noise
-            base = slo.objective
-            noise = random.gauss(0, 0.001)
-            # Occasional incidents
-            incident = random.random() < 0.005
-            value = base + noise - (0.02 if incident else 0)
-            value = max(0.5, min(1.0, value))
-            points.append({"timestamp": ts, "value": value, "incident": incident})
+            # Binary success/failure based on objective
+            success = random.random() < slo.objective
+            value = 1.0 if success else 0.0
+            points.append({"timestamp": ts, "value": value, "incident": not success})
         return points
 
     def list_slos(self) -> List[dict]:
@@ -123,11 +122,11 @@ class SloEngine:
             return None
         metrics = self._metrics.get(slo_id, [])
         if not metrics:
-            return {"slo_id": slo_id, "burn_rate": 0.0, "thresholds": []}
+            return {"slo_id": slo_id, "burn_rate": 0.0, "thresholds": [], "severity": "none"}
 
         # Calculate burn rate: how fast we're consuming error budget
         error_budget_total = 1.0 - slo.objective
-        window_hours = int(window.rstrip("d")) * 24
+        window_hours = self._parse_window_hours(window)
         recent = metrics[-window_hours:] if len(metrics) >= window_hours else metrics
 
         failures = sum(1 for m in recent if m["value"] < slo.objective)
@@ -135,9 +134,9 @@ class SloEngine:
 
         # Threshold levels
         thresholds = [
-            {"multiplier": 14.4, "window": "1h", "severity": "P1", "action": "page_oncall"},
-            {"multiplier": 6.0, "window": "6h", "severity": "P2", "action": "notify_team"},
-            {"multiplier": 3.0, "window": "24h", "severity": "P3", "action": "create_ticket"},
+            {"multiplier": 14.4, "window": "1h", "severity": "SEV1", "action": "page_oncall"},
+            {"multiplier": 6.0, "window": "6h", "severity": "SEV2", "action": "notify_team"},
+            {"multiplier": 3.0, "window": "24h", "severity": "SEV3", "action": "create_ticket"},
         ]
 
         active_alerts = [t for t in thresholds if burn_rate >= t["multiplier"]]
@@ -154,11 +153,24 @@ class SloEngine:
             "severity": active_alerts[0]["severity"] if active_alerts else "none",
         }
 
+    def _parse_window_hours(self, window: str) -> int:
+        """Parse window string like '1h', '6h', '24h', '30d' to hours."""
+        if window.endswith('h'):
+            return int(window[:-1])
+        elif window.endswith('d'):
+            return int(window[:-1]) * 24
+        else:
+            return 24
+
 
 _engine: Optional[SloEngine] = None
+
 
 def get_slo_engine() -> SloEngine:
     global _engine
     if _engine is None:
         _engine = SloEngine()
+        # Auto-seed for tests
+        if not _engine._slos:
+            _engine._register_defaults()
     return _engine

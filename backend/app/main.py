@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
-from api.routes import router
-from api.auth import auth_router
-from api.middleware import setup_middleware
-from services.observability import get_observability
+from app.core.config import settings
+from app.api.routes import router
+from app.api.auth import auth_router
+from app.api.middleware import setup_middleware
+from app.services.observability import get_observability
 
 
 @asynccontextmanager
@@ -18,10 +18,10 @@ async def lifespan(app: FastAPI):
     # Startup
     observability = get_observability()
     observability.init(settings.DATA_DIR, settings.LOG_DIR)
-    from services.pipelines import get_pipeline_engine
-    from services.slo import get_slo_engine
-    from services.incidents import get_incident_engine
-    from services.releases import get_release_engine
+    from app.services.pipelines import get_pipeline_engine
+    from app.services.slo import get_slo_engine
+    from app.services.incidents import get_incident_engine
+    from app.services.releases import get_release_engine
     get_pipeline_engine().init(settings.DATA_DIR)
     get_slo_engine().init(settings.DATA_DIR)
     get_incident_engine().init(settings.DATA_DIR)
@@ -45,7 +45,7 @@ setup_middleware(app)
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
+        "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
