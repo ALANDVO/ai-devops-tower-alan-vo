@@ -14,7 +14,9 @@ class Settings(BaseSettings):
 
     # LLM
     LLM_API_KEY: str = ""
+    LLM_PROVIDER: str = "anthropic"  # openai, anthropic, gemini, ollama
     LLM_MODEL: str = "claude-sonnet-4-20250514"
+    LLM_BASE_URL: str = ""  # optional override for OpenAI-compatible / Ollama endpoints
     LLM_MAX_TOKENS: int = 4096
 
     # Auth

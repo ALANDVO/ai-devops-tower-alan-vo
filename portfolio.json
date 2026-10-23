@@ -1,22 +1,7 @@
 {
-  "schema_version": 1,
   "name": "ai-devops-tower-alan-vo",
   "owner": "ALANDVO",
   "email": "alanvo@gmail.com",
-  "domain": "AI DevOps Control Tower with deployment pipeline management, SLO monitoring with error budget tracking, incident response automation, LLM-powered build failure analysis, and release notes auto-generation",
-  "workflows": [
-    "Pipeline orchestration: trigger, monitor, and analyze CI/CD builds with LLM-powered failure diagnosis",
-    "SLO-driven reliability: track error budgets, burn rates, and multi-window alerts with automated escalation",
-    "Incident lifecycle: create, route, analyze root cause with AI, and generate postmortems from timeline",
-    "Release management: version, promote across environments, auto-generate release notes from changelogs"
-  ],
-  "auth": "oidc-keycloak-saml-broker",
-  "llm_providers": [
-    "openai-compatible",
-    "anthropic",
-    "gemini",
-    "ollama"
-  ],
   "summary": "Work in progress: ai-devops-tower-alan-vo",
   "status": "work-in-progress"
 }

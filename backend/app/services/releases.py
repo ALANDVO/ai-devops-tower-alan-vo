@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field, asdict
 
+from app.core.config import settings
+from app.services.llm import get_llm_adapter, LLMResponse
+
 
 @dataclass
 class Release:
@@ -35,25 +38,39 @@ class ReleaseEngine:
     def _seed(self):
         """Seed with sample releases."""
         r1 = Release(
-            release_id="rel-2024-01-15",
-            service="api-gateway",
+            release_id="rel-seed-001",
+            service="user-api",
             version="2.4.0",
             status="production",
-            description="Major release with rate limiting improvements",
-            changelog=["Added configurable rate limiting per API key", "Reduced p99 latency by 40%", "Fixed connection leak in WebSocket handler"],
-            created_by="release-bot",
+            description="Add user profile management and avatar uploads",
+            changelog=[
+                "feat: User profile page with editable fields",
+                "feat: Avatar upload with automatic resizing and CDN",
+                "fix: Race condition in session refresh",
+                "improvement: Reduced API latency by 15% via query optimization",
+            ],
+            created_by="deploy-bot",
             environment="production",
-            promoted_at=time.time() - 86400 * 3,
+            created_at=time.time() - 86400 * 7,
+            promoted_at=time.time() - 86400 * 6,
+            notes=None,
         )
         r2 = Release(
-            release_id="rel-2024-01-18",
-            service="orders-service",
-            version="1.12.0",
+            release_id="rel-seed-002",
+            service="payment-gateway",
+            version="1.3.0",
             status="staging",
-            description="New payment provider integration",
-            changelog=["Added Stripe webhook processing", "Refund flow improvements", "Currency conversion support"],
-            created_by="dev-team",
+            description="Support for Apple Pay and Google Pay",
+            changelog=[
+                "feat: Apple Pay integration via PaymentRequest API",
+                "feat: Google Pay support with tokenized cards",
+                "fix: Webhook retry logic for failed payments",
+                "improvement: Added idempotency keys for all mutating endpoints",
+            ],
+            created_by="deploy-bot",
             environment="staging",
+            created_at=time.time() - 86400 * 2,
+            notes=None,
         )
         self._releases[r1.release_id] = r1
         self._releases[r2.release_id] = r2
@@ -61,8 +78,13 @@ class ReleaseEngine:
     def create_release(self, service: str, version: str, description: str, changelog: List[str], user: str) -> Release:
         rel_id = f"rel-{uuid.uuid4().hex[:10]}"
         release = Release(
-            release_id=rel_id, service=service, version=version,
-            description=description, changelog=changelog, created_by=user,
+            release_id=rel_id,
+            service=service,
+            version=version,
+            description=description,
+            changelog=changelog,
+            created_by=user,
+            status="draft",
         )
         self._releases[rel_id] = release
         return release
@@ -73,7 +95,7 @@ class ReleaseEngine:
             releases = [r for r in releases if r.service == service]
         if status:
             releases = [r for r in releases if r.status == status]
-        releases.sort(key=lambda r: r.created_at, reverse=True)
+        releases.sort(key=lambda x: x.created_at, reverse=True)
         return [asdict(r) for r in releases[:limit]]
 
     def get_release(self, release_id: str) -> Optional[dict]:
@@ -83,10 +105,13 @@ class ReleaseEngine:
     def promote(self, release_id: str, environment: str, user: str) -> dict:
         r = self._releases.get(release_id)
         if not r:
-            raise ValueError(f"Release {release_id} not found")
+            return {"status": "not_found", "error": True}
+        valid_envs = ["development", "staging", "production"]
+        if environment not in valid_envs:
+            return {"status": "invalid_environment", "error": True}
         r.status = environment
-        r.environment = environment
         r.promoted_at = time.time()
+        r.environment = environment
         return {"status": r.status, "environment": environment, "promoted_at": r.promoted_at}
 
     async def generate_notes(self, release_id: str) -> Optional[dict]:
@@ -114,34 +139,18 @@ Requirements:
 - Keep it concise but complete
 - Format in Markdown"""
 
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": settings.LLM_MODEL,
-                        "max_tokens": settings.LLM_MAX_TOKENS,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                notes = data["content"][0]["text"]
-                r.notes = notes
-                return {"notes": notes, "version": r.version, "service": r.service}
-        except Exception as e:
-            return {"notes": f"Generation unavailable: {str(e)}", "error": True}
+        response: LLMResponse = await get_llm_adapter().complete(prompt)
 
+        if response.error:
+            return {"notes": f"Generation unavailable: {response.error}", "error": True, "provider": response.provider, "model": response.model}
 
-from app.core.config import settings
+        notes = response.content
+        r.notes = notes
+        return {"notes": notes, "version": r.version, "service": r.service, "provider": response.provider, "model": response.model, "usage": response.usage}
+
 
 _engine: Optional[ReleaseEngine] = None
+
 
 def get_release_engine() -> ReleaseEngine:
     global _engine
