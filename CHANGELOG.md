@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
 ## 1.0.0 — work-in-progress checkpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
@@ -33,12 +37,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added CI/CD workflow with Docker builds
 - Added portfolio.json, pyproject.toml, CHANGELOG.md
 
+## [1.1.0] - 2026-10-23
+
+### Added
+- Multi-provider LLM adapter supporting OpenAI-compatible, Anthropic, Gemini, and Ollama
+- LLM_PROVIDER and LLM_BASE_URL configuration options for runtime provider selection
+- Shared LLM adapter module (backend/app/services/llm.py) with unified interface
+- Refactored build analysis, incident root cause analysis, and release notes generation to use shared adapter
+- Comprehensive test suite for LLM adapters (14 tests covering all providers and error handling)
+
+### Changed
+- Updated config.py with LLM_PROVIDER (default: anthropic) and LLM_BASE_URL settings
+- Refactored analysis.py, incidents.py, releases.py to use shared LLM adapter
+- Restored original incident on-call routing logic for test compatibility
+
+### Tests
+- All 87 backend tests pass (73 original + 14 new LLM adapter tests)
+- All 12 frontend tests pass
+
 ## [Unreleased]
 
 ### Planned
 - Full OIDC/Keycloak authentication flow with PKCE
 - SAML identity provider broker configuration
-- Multi-provider LLM abstraction (OpenAI, Anthropic, Gemini, Ollama)
 - Persistent SQLite storage with SQLAlchemy
 - Integration tests with testcontainers
 - Webhook support for CI/CD systems (GitHub Actions, GitLab CI, Jenkins)

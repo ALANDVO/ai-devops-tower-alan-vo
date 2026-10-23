@@ -2,8 +2,6 @@
 
 import json
 from typing import Dict, Any, Optional
-from app.core.config import settings
-
 
 class AnalysisEngine:
     """Analyze build failures using LLM to identify root causes and suggest fixes."""
@@ -22,12 +20,26 @@ class AnalysisEngine:
             return {"status": "incomplete", "summary": "Build did not complete all stages.", "recommendations": []}
 
         prompt = self._build_prompt(build, failed_stages)
-        response = await self._call_llm(prompt)
+        response: LLMResponse = await get_llm_adapter().complete(prompt)
+
+        if response.error:
+            return {
+                "build_id": build["build_id"],
+                "status": "error",
+                "failed_stages": [s["name"] for s in failed_stages],
+                "analysis": f"LLM analysis unavailable: {response.error}. Manual log review recommended.",
+                "provider": response.provider,
+                "model": response.model,
+            }
+
         return {
             "build_id": build["build_id"],
             "status": "analyzed",
             "failed_stages": [s["name"] for s in failed_stages],
-            "analysis": response,
+            "analysis": response.content,
+            "provider": response.provider,
+            "model": response.model,
+            "usage": response.usage,
         }
 
     def _build_prompt(self, build: dict, failed_stages: list) -> str:
@@ -55,32 +67,9 @@ Provide:
 
 Be specific and actionable. Reference exact log lines where possible."""
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM API for analysis."""
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": settings.LLM_MODEL,
-                        "max_tokens": settings.LLM_MAX_TOKENS,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                return data["content"][0]["text"]
-        except Exception as e:
-            return f"LLM analysis unavailable: {str(e)}. Manual log review recommended."
-
 
 _analysis: Optional[AnalysisEngine] = None
+
 
 def get_analysis_engine() -> AnalysisEngine:
     global _analysis

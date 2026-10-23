@@ -3,8 +3,12 @@
 import time
 import json
 import uuid
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field, asdict
+
+from app.core.config import settings
+from app.services.llm import get_llm_adapter, LLMResponse
 
 
 @dataclass
@@ -31,6 +35,7 @@ class Incident:
     on_call: str = ""
     components: List[str] = field(default_factory=list)
     detected_by: str = ""
+    created_by: str = ""
 
 
 class IncidentEngine:
@@ -74,6 +79,7 @@ class IncidentEngine:
             detected_by=data.get("detected_by", created_by),
             on_call=on_call,
             events=[IncidentEvent(time.time(), "system", "created", f"Severity {severity}, on-call: {on_call}")],
+            created_by=created_by,
         )
         self._incidents[inc_id] = incident
         return incident
@@ -121,10 +127,10 @@ class IncidentEngine:
         inc = self._incidents.get(incident_id)
         if not inc:
             return None
-        inc.status = new_status
-        if new_status == "resolved":
+        if new_status == "resolved" and inc.status != "resolved":
             inc.resolved_at = time.time()
-        inc.events.append(IncidentEvent(time.time(), actor, "status_change", details or f"Status → {new_status}"))
+        inc.status = new_status
+        inc.events.append(IncidentEvent(time.time(), actor, f"status_changed_to_{new_status}", details))
         return asdict(inc)
 
     async def analyze(self, incident_id: str) -> Optional[dict]:
@@ -154,30 +160,15 @@ Provide:
 
 Be specific. Reference the service architecture and common failure modes."""
 
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": settings.LLM_MODEL,
-                        "max_tokens": settings.LLM_MAX_TOKENS,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                analysis = data["content"][0]["text"]
-                inc.root_cause = analysis
-                inc.events.append(IncidentEvent(time.time(), "ai", "root_cause_analyzed", "LLM analysis completed"))
-                return {"root_cause": analysis, "analyzed_at": time.time()}
-        except Exception as e:
-            return {"root_cause": f"Analysis unavailable: {str(e)}", "error": True}
+        response: LLMResponse = await get_llm_adapter().complete(prompt)
+
+        if response.error:
+            return {"root_cause": f"Analysis unavailable: {response.error}", "error": True, "provider": response.provider, "model": response.model}
+
+        analysis = response.content
+        inc.root_cause = analysis
+        inc.events.append(IncidentEvent(time.time(), "ai", "root_cause_analyzed", f"LLM analysis completed ({response.provider})"))
+        return {"root_cause": analysis, "analyzed_at": time.time(), "provider": response.provider, "model": response.model, "usage": response.usage}
 
     async def postmortem(self, incident_id: str) -> Optional[dict]:
         """Generate LLM-powered postmortem document."""
@@ -214,36 +205,19 @@ Structure:
 
 Be thorough, blameless, and actionable."""
 
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": settings.LLM_MODEL,
-                        "max_tokens": settings.LLM_MAX_TOKENS,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                pm = data["content"][0]["text"]
-                inc.postmortem = pm
-                inc.events.append(IncidentEvent(time.time(), "ai", "postmortem_generated", "Postmortem document created"))
-                return {"postmortem": pm, "generated_at": time.time()}
-        except Exception as e:
-            return {"postmortem": f"Generation unavailable: {str(e)}", "error": True}
+        response: LLMResponse = await get_llm_adapter().complete(prompt)
 
+        if response.error:
+            return {"postmortem": f"Generation unavailable: {response.error}", "error": True, "provider": response.provider, "model": response.model}
 
-from pathlib import Path
-from app.core.config import settings
+        pm = response.content
+        inc.postmortem = pm
+        inc.events.append(IncidentEvent(time.time(), "ai", "postmortem_generated", f"Postmortem document created ({response.provider})"))
+        return {"postmortem": pm, "generated_at": time.time(), "provider": response.provider, "model": response.model, "usage": response.usage}
+
 
 _engine: Optional[IncidentEngine] = None
+
 
 def get_incident_engine() -> IncidentEngine:
     global _engine
