@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
+# Changelog
+
 ## 1.1.0 — work-in-progress checkpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
@@ -56,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All 12 frontend tests pass
 
 ## [Unreleased]
+
+### Changed
+- Updated Gemini adapter to use `systemInstruction` field (modern API) instead of manual role alternation for system prompts
 
 ### Planned
 - Full OIDC/Keycloak authentication flow with PKCE
