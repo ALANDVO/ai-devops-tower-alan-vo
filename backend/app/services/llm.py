@@ -169,11 +169,7 @@ class GeminiAdapter(LLMAdapter):
         )
 
     async def complete(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
-        contents = []
-        if system_prompt:
-            contents.append({"role": "user", "parts": [{"text": system_prompt}]})
-            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
-        contents.append({"role": "user", "parts": [{"text": prompt}]})
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
 
         payload = {
             "contents": contents,
@@ -182,6 +178,8 @@ class GeminiAdapter(LLMAdapter):
                 "temperature": 0.2,
             },
         }
+        if system_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
 
         headers = {"Content-Type": "application/json"}
 
