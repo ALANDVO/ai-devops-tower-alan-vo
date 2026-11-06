@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 — work-in-progress checkpoint
+
+Partial code published for continued development. Known issues: STATUS.md.
+
 ## 1.2.0 — work-in-progress checkpoint
 
 Partial code published for continued development. Known issues: STATUS.md.
@@ -60,9 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 - All 87 backend tests pass (73 original + 14 new LLM adapter tests)
 - All 12 frontend tests pass
-
-## [Unreleased]
-
 ### Changed
 - Updated Gemini adapter to use `systemInstruction` field (modern API) instead of manual role alternation for system prompts
 
@@ -72,3 +73,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent SQLite storage with SQLAlchemy
 - Integration tests with testcontainers
 - Webhook support for CI/CD systems (GitHub Actions, GitLab CI, Jenkins)
+
+## [1.2.0] - 2026-11-06
+
+### Added
+- LLM streaming responses for all providers (OpenAI-compatible, Anthropic, Gemini, Ollama)
+- LLMStreamChunk dataclass for normalized streaming chunks
+- Abstract stream() method on LLMAdapter base class
+- Streaming implementation in all four provider adapters
+- stream_llm() convenience function for one-off streaming calls
+- 6 new streaming tests covering success and error handling per provider
+
+### Changed
+- Extended LLM adapter interface with streaming capability
+
+### Tests
+- All 93 backend tests pass (87 original + 6 new streaming tests)
+- All 12 frontend tests pass

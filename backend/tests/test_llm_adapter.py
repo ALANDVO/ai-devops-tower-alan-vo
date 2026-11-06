@@ -251,3 +251,209 @@ async def test_redact_key():
     assert adapter._redact_key("sk-1234567890abcdef") == "sk-1***********cdef"
     assert adapter._redact_key("short") == "<redacted>"
     assert adapter._redact_key("") == "<empty>"
+
+
+# Streaming tests
+
+class MockStreamResponse:
+    """Mock streaming response for testing."""
+    def __init__(self, lines, status_code=200):
+        self._lines = lines
+        self.status_code = status_code
+        self.text = "\n".join(lines)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import httpx
+            raise httpx.HTTPStatusError("Error", request=MagicMock(), response=self)
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_stream_success():
+    """Test OpenAI-compatible adapter streams response correctly."""
+    from app.services.llm import LLMStreamChunk
+
+    adapter = OpenAICompatibleAdapter(api_key="test-key", model="gpt-4", base_url="https://api.openai.com/v1")
+
+    stream_lines = [
+        'data: {"choices": [{"delta": {"content": "Hello"}, "finish_reason": null}]}',
+        'data: {"choices": [{"delta": {"content": " world"}, "finish_reason": null}]}',
+        'data: {"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}}',
+        'data: [DONE]',
+    ]
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_stream.return_value = MockStreamResponse(stream_lines)
+        chunks = []
+        async for chunk in adapter.stream("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 3
+    assert chunks[0].content == "Hello"
+    assert chunks[0].is_final is False
+    assert chunks[1].content == " world"
+    assert chunks[1].is_final is False
+    assert chunks[2].content == ""
+    assert chunks[2].is_final is True
+    assert chunks[2].usage == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+    assert all(c.error is None for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_anthropic_adapter_stream_success():
+    """Test Anthropic adapter streams response correctly."""
+    from app.services.llm import LLMStreamChunk
+
+    adapter = AnthropicAdapter(api_key="test-key", model="claude-3", base_url="https://api.anthropic.com/v1")
+
+    stream_lines = [
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello"}}',
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": " world"}}',
+        'data: {"type": "message_stop", "message": {"usage": {"input_tokens": 5, "output_tokens": 10}}}',
+    ]
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_stream.return_value = MockStreamResponse(stream_lines)
+        chunks = []
+        async for chunk in adapter.stream("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 3
+    assert chunks[0].content == "Hello"
+    assert chunks[0].is_final is False
+    assert chunks[1].content == " world"
+    assert chunks[1].is_final is False
+    assert chunks[2].content == ""
+    assert chunks[2].is_final is True
+    assert chunks[2].usage == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+    assert all(c.error is None for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_gemini_adapter_stream_success():
+    """Test Gemini adapter streams response correctly."""
+    from app.services.llm import LLMStreamChunk
+
+    adapter = GeminiAdapter(api_key="test-key", model="gemini-pro", base_url="https://generativelanguage.googleapis.com/v1beta")
+
+    stream_lines = [
+        '{"candidates": [{"content": {"parts": [{"text": "Hello world"}]}, "finishReason": "STOP"}], "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 10, "totalTokenCount": 15}}',
+    ]
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_stream.return_value = MockStreamResponse(stream_lines)
+        chunks = []
+        async for chunk in adapter.stream("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 2
+    assert chunks[0].content == "Hello world"
+    assert chunks[0].is_final is True
+    assert chunks[0].usage is None  # usage comes in final chunk
+    assert chunks[1].content == ""
+    assert chunks[1].is_final is True
+    assert chunks[1].usage == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+    assert all(c.error is None for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_ollama_adapter_stream_success():
+    """Test Ollama adapter streams response correctly."""
+    from app.services.llm import LLMStreamChunk
+
+    adapter = OllamaAdapter(api_key="", model="llama3", base_url="http://localhost:11434")
+
+    stream_lines = [
+        '{"message": {"content": "Hello"}, "done": false}',
+        '{"message": {"content": " world"}, "done": false}',
+        '{"message": {"content": ""}, "done": true, "prompt_eval_count": 5, "eval_count": 10}',
+    ]
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_stream.return_value = MockStreamResponse(stream_lines)
+        chunks = []
+        async for chunk in adapter.stream("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 3
+    assert chunks[0].content == "Hello"
+    assert chunks[0].is_final is False
+    assert chunks[1].content == " world"
+    assert chunks[1].is_final is False
+    assert chunks[2].content == ""
+    assert chunks[2].is_final is True
+    assert chunks[2].usage == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+    assert all(c.error is None for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_stream_http_error():
+    """Test OpenAI adapter handles streaming HTTP errors."""
+    from app.services.llm import LLMStreamChunk
+
+    adapter = OpenAICompatibleAdapter(api_key="test-key", model="gpt-4", base_url="https://api.openai.com/v1")
+
+    with patch("httpx.AsyncClient.stream") as mock_stream:
+        mock_stream.return_value = MockStreamResponse([], status_code=401)
+        chunks = []
+        async for chunk in adapter.stream("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == ""
+    assert chunks[0].is_final is True
+    assert "401" in chunks[0].error
+
+
+@pytest.mark.asyncio
+async def test_stream_llm_convenience_function():
+    """Test stream_llm convenience function."""
+    from app.services.llm import stream_llm, LLMStreamChunk
+
+    stream_lines = [
+        'data: {"choices": [{"delta": {"content": "Hello"}, "finish_reason": null}]}',
+        'data: {"choices": [{"delta": {"content": " world"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}}',
+    ]
+
+    with patch("app.services.llm.get_llm_adapter") as mock_get_adapter:
+        mock_adapter = AsyncMock()
+        async def mock_stream(prompt, system_prompt=None):
+            for line in stream_lines:
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    import json
+                    data = json.loads(data_str)
+                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    finish_reason = data.get("choices", [{}])[0].get("finish_reason")
+                    if content:
+                        yield LLMStreamChunk(content=content, is_final=finish_reason is not None)
+                    if finish_reason:
+                        usage = data.get("usage")
+                        yield LLMStreamChunk(content="", is_final=True, usage=usage)
+                        break
+        mock_adapter.stream = mock_stream
+        mock_get_adapter.return_value = mock_adapter
+
+        chunks = []
+        async for chunk in stream_llm("Test prompt"):
+            chunks.append(chunk)
+
+    assert len(chunks) == 3
+    assert chunks[0].content == "Hello"
+    assert chunks[0].is_final is False
+    assert chunks[1].content == " world"
+    assert chunks[1].is_final is True
+    assert chunks[2].content == ""
+    assert chunks[2].is_final is True
+    assert chunks[2].usage == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
