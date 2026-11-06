@@ -21,6 +21,15 @@ class LLMResponse:
     error: Optional[str] = None
 
 
+@dataclass
+class LLMStreamChunk:
+    """A single chunk from a streaming LLM response."""
+    content: str
+    is_final: bool = False
+    usage: Optional[Dict[str, int]] = None
+    error: Optional[str] = None
+
+
 class LLMAdapter(ABC):
     """Abstract base for LLM provider adapters."""
 
@@ -34,6 +43,11 @@ class LLMAdapter(ABC):
     @abstractmethod
     async def complete(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
         """Send completion request and return normalized response."""
+        pass
+
+    @abstractmethod
+    async def stream(self, prompt: str, system_prompt: Optional[str] = None):
+        """Stream completion response as async generator of LLMStreamChunk."""
         pass
 
     def _redact_key(self, key: str) -> str:
@@ -99,6 +113,56 @@ class OpenAICompatibleAdapter(LLMAdapter):
                 error=str(e),
             )
 
+    async def stream(self, prompt: str, system_prompt: Optional[str] = None):
+        """Stream completion response from OpenAI-compatible API."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    self.endpoint,
+                    headers=headers,
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "max_tokens": self.max_tokens,
+                        "temperature": 0.2,
+                        "stream": True,
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line or line == "":
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            try:
+                                data = json.loads(data_str)
+                                delta = data.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                finish_reason = data.get("choices", [{}])[0].get("finish_reason")
+                                if content:
+                                    yield LLMStreamChunk(content=content, is_final=finish_reason is not None)
+                                if finish_reason:
+                                    usage = data.get("usage")
+                                    yield LLMStreamChunk(content="", is_final=True, usage=usage)
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+        except httpx.HTTPStatusError as e:
+            yield LLMStreamChunk(content="", is_final=True, error=f"HTTP {e.response.status_code}: {e.response.text[:500]}")
+        except Exception as e:
+            yield LLMStreamChunk(content="", is_final=True, error=str(e))
+
 
 class AnthropicAdapter(LLMAdapter):
     """Adapter for Anthropic Messages API."""
@@ -156,6 +220,64 @@ class AnthropicAdapter(LLMAdapter):
                 error=str(e),
             )
 
+    async def stream(self, prompt: str, system_prompt: Optional[str] = None):
+        """Stream completion response from Anthropic Messages API."""
+        messages = [{"role": "user", "content": prompt}]
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": 0.2,
+            "stream": True,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    self.endpoint,
+                    headers=headers,
+                    json=payload,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        try:
+                            data = json.loads(data_str)
+                            event_type = data.get("type")
+                            if event_type == "content_block_delta":
+                                delta = data.get("delta", {})
+                                text = delta.get("text", "")
+                                if text:
+                                    yield LLMStreamChunk(content=text, is_final=False)
+                            elif event_type == "message_stop":
+                                usage = data.get("message", {}).get("usage")
+                                usage_dict = None
+                                if usage:
+                                    usage_dict = {
+                                        "prompt_tokens": usage.get("input_tokens", 0),
+                                        "completion_tokens": usage.get("output_tokens", 0),
+                                        "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                                    }
+                                yield LLMStreamChunk(content="", is_final=True, usage=usage_dict)
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.HTTPStatusError as e:
+            yield LLMStreamChunk(content="", is_final=True, error=f"HTTP {e.response.status_code}: {e.response.text[:500]}")
+        except Exception as e:
+            yield LLMStreamChunk(content="", is_final=True, error=str(e))
 
 class GeminiAdapter(LLMAdapter):
     """Adapter for Google Gemini generateContent API."""
@@ -235,6 +357,68 @@ class GeminiAdapter(LLMAdapter):
                 error=str(e),
             )
 
+    async def stream(self, prompt: str, system_prompt: Optional[str] = None):
+        """Stream completion response from Google Gemini generateContent API."""
+        contents = [{"role": "user", "parts": [{"text": prompt}]}]
+
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": self.max_tokens,
+                "temperature": 0.2,
+            },
+        }
+        if system_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+        headers = {"Content-Type": "application/json"}
+
+        # Use the streaming endpoint
+        stream_endpoint = (
+            (self.base_url or "https://generativelanguage.googleapis.com/v1beta")
+            .rstrip("/")
+            + f"/models/{self.model}:streamGenerateContent?key={self.api_key}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    stream_endpoint,
+                    headers=headers,
+                    json=payload,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            candidates = data.get("candidates", [])
+                            if not candidates:
+                                continue
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            text = "".join(p.get("text", "") for p in parts)
+                            finish_reason = candidates[0].get("finishReason")
+                            if text:
+                                yield LLMStreamChunk(content=text, is_final=finish_reason is not None)
+                            if finish_reason:
+                                usage = data.get("usageMetadata")
+                                usage_dict = None
+                                if usage:
+                                    usage_dict = {
+                                        "prompt_tokens": usage.get("promptTokenCount", 0),
+                                        "completion_tokens": usage.get("candidatesTokenCount", 0),
+                                        "total_tokens": usage.get("totalTokenCount", 0),
+                                    }
+                                yield LLMStreamChunk(content="", is_final=True, usage=usage_dict)
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.HTTPStatusError as e:
+            yield LLMStreamChunk(content="", is_final=True, error=f"HTTP {e.response.status_code}: {e.response.text[:500]}")
+        except Exception as e:
+            yield LLMStreamChunk(content="", is_final=True, error=str(e))
 
 class OllamaAdapter(LLMAdapter):
     """Adapter for Ollama local API (OpenAI-compatible with defaults)."""
@@ -298,6 +482,64 @@ class OllamaAdapter(LLMAdapter):
                 error=str(e),
             )
 
+    async def stream(self, prompt: str, system_prompt: Optional[str] = None):
+        """Stream completion response from Ollama API."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": True,
+            "options": {
+                "num_predict": self.max_tokens,
+                "temperature": 0.2,
+            },
+        }
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    self.endpoint,
+                    headers=headers,
+                    json=payload,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            message = data.get("message", {})
+                            content = message.get("content", "")
+                            done = data.get("done", False)
+                            if content:
+                                yield LLMStreamChunk(content=content, is_final=done)
+                            if done:
+                                yield LLMStreamChunk(
+                                    content="",
+                                    is_final=True,
+                                    usage={
+                                        "prompt_tokens": data.get("prompt_eval_count", 0),
+                                        "completion_tokens": data.get("eval_count", 0),
+                                        "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
+                                    },
+                                )
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.HTTPStatusError as e:
+            yield LLMStreamChunk(content="", is_final=True, error=f"HTTP {e.response.status_code}: {e.response.text[:500]}")
+        except Exception as e:
+            yield LLMStreamChunk(content="", is_final=True, error=str(e))
+
 
 def get_llm_adapter() -> LLMAdapter:
     """Factory function to get the configured LLM adapter."""
@@ -345,3 +587,10 @@ async def complete_llm(prompt: str, system_prompt: Optional[str] = None) -> LLMR
     """Convenience function for one-off LLM calls."""
     adapter = get_llm_adapter()
     return await adapter.complete(prompt, system_prompt)
+
+
+async def stream_llm(prompt: str, system_prompt: Optional[str] = None):
+    """Convenience function for streaming LLM calls."""
+    adapter = get_llm_adapter()
+    async for chunk in adapter.stream(prompt, system_prompt):
+        yield chunk

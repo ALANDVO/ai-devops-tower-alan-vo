@@ -49,3 +49,19 @@ Implementation: `backend/app/core/config.py`, `backend/app/services/llm.py`, `ba
 
 Tests: `backend/tests/test_llm_adapter.py`, `backend/tests/test_health_auth.py`, `backend/tests/test_pipelines_builds.py`, `backend/tests/test_slo.py`, `backend/tests/test_incidents_releases.py`, `backend/tests/test_deploy_alerts_artifacts.py`, `backend/tests/test_rbac_domain.py`, `frontend/src/components/__tests__/components.test.tsx`
 
+### llm-streaming — LLM streaming responses for all providers
+
+Status: done
+
+Acceptance:
+- LLMStreamChunk dataclass for normalized streaming chunks
+- Abstract stream method added to LLMAdapter base class
+- Streaming implemented for OpenAI-compatible, Anthropic, Gemini, Ollama adapters
+- stream_llm convenience function for one-off streaming calls
+- Tests cover streaming success and error handling for each provider
+- All existing tests still pass
+
+Implementation: `backend/app/services/llm.py`, `backend/tests/test_llm_adapter.py`
+
+Tests: `backend/tests/test_llm_adapter.py`, `backend/tests/test_health_auth.py`, `backend/tests/test_pipelines_builds.py`, `backend/tests/test_slo.py`, `backend/tests/test_incidents_releases.py`, `backend/tests/test_deploy_alerts_artifacts.py`, `backend/tests/test_rbac_domain.py`, `frontend/src/components/__tests__/components.test.tsx`
+
