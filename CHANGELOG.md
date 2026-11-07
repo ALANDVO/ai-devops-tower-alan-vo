@@ -90,3 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 - All 93 backend tests pass (87 original + 6 new streaming tests)
 - All 12 frontend tests pass
+
+---
+
+Alan Vo · [alanvo.net](https://alanvo.net)

@@ -121,3 +121,7 @@ Burn rate thresholds trigger severity-graded alerts:
 - 3x burn over 24h → SEV3 (ticket)
 
 **Built by [Alan Vo](https://github.com/ALANDVO)** | alanvo@gmail.com | AI, ML & DevOps
+
+---
+
+Alan Vo · [alanvo.net](https://alanvo.net)

@@ -65,3 +65,6 @@ Implementation: `backend/app/services/llm.py`, `backend/tests/test_llm_adapter.p
 
 Tests: `backend/tests/test_llm_adapter.py`, `backend/tests/test_health_auth.py`, `backend/tests/test_pipelines_builds.py`, `backend/tests/test_slo.py`, `backend/tests/test_incidents_releases.py`, `backend/tests/test_deploy_alerts_artifacts.py`, `backend/tests/test_rbac_domain.py`, `frontend/src/components/__tests__/components.test.tsx`
 
+---
+
+Alan Vo · [alanvo.net](https://alanvo.net)
