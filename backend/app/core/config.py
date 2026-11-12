@@ -44,3 +44,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+# Note: provider-specific default models for LLM_PROVIDER
