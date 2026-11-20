@@ -1,4 +1,5 @@
 """Pytest configuration and fixtures."""
+import os
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -43,3 +44,14 @@ def viewer_headers():
     from app.api.auth import create_token
     token = create_token("viewer@example.com", "viewer")["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_data_dir():
+    """Ensure data directory exists for test fixtures."""
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    os.makedirs(data_dir, exist_ok=True)
+    # Also set it in settings so the app uses it
+    from app.core.config import settings
+    settings.DATA_DIR = data_dir
+    yield
