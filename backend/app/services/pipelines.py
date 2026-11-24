@@ -46,6 +46,7 @@ class PipelineEngine:
         self._data_dir = Path(data_dir) / "pipelines"
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._load()
+        self._seed()
 
     def _load(self):
         p = self._data_dir / "pipelines.json"
@@ -134,6 +135,14 @@ class PipelineEngine:
             builds = [b for b in builds if b.status == status]
         builds.sort(key=lambda b: b.created_at, reverse=True)
         return [asdict(b) for b in builds[:limit]]
+
+
+
+    def _seed(self):
+        """Seed with sample pipelines for demo and testing."""
+        self.register("deploy-pipeline", "api-gateway", ["checkout", "build", "test", "lint", "package", "publish"])
+        self.register("ci-pipeline", "frontend", ["checkout", "build", "test", "lint"])
+        self.register("release-pipeline", "services", ["checkout", "build", "test", "deploy"])
 
 
 _engine: Optional[PipelineEngine] = None
